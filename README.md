@@ -2,11 +2,18 @@
 
 I don't want the global variable FLAGS from `absl.flag`.
 
-I create a ipynb notebook `difrec_tf2.ipynb`
+I create a ipynb notebook `difrec_tf2.ipynb` and verify it on colab. **Today is 2023.01.27**
 
-you can change the settings and I find (1000, 0) will fail, (6,30) is slow.
+You need to upload the related  `*.py` files to colab, and then
+
+you can change the settings and note that 
+
+1. the default model T6 with (6,30) is slow.
+2. (1000, 0) will fail, so I don't know how to train T1k 
+
 
 ```
+hps['num_res_blocks'] = 2
 hps['num_diffusion_timesteps'] = 6
 hps['mcmc_num_steps'] = 30
 ```
