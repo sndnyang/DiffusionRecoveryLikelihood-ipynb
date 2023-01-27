@@ -26,7 +26,10 @@ The pytorch implementation (I hope it can run smoothly but there may exists bugs
 ###  one more thing
 Will upload T1k setting soon!   --- 2 years later
 
-## Citation
+# Official Repo
+
+https://github.com/ruiqigao/recovery_likelihood
+
 If you find their work helpful to your research, please cite:
 ```
 @article{gao2020learning,
