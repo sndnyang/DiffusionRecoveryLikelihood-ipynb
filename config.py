@@ -40,7 +40,7 @@ flags.DEFINE_integer('fid_n_batch', 64, 'batch size to compute FID/IS scores')  
 
 # model
 flags.DEFINE_integer('num_res_blocks', 2, 'number of residual blocks')
-flags.DEFINE_integer('num_diffusion_timesteps', 6, 'number of time steps')
+flags.DEFINE_integer('num_diffusion_timesteps', 1000, 'number of time steps')
 flags.DEFINE_boolean('randflip', True, 'random flip images')
 flags.DEFINE_float('dropout', 0., 'dropout in the residual blocks')
 flags.DEFINE_string('normalize', None, 'None / batch_norm / group_norm / instance_norm')
@@ -55,7 +55,7 @@ flags.DEFINE_float('ma_decay', 0.999, 'exp moving average for testing [0.999]')
 flags.DEFINE_float('noise_scale', 1.0, 'MCMC sampling noise scale, 1.0 in training / 0.99 in testing')
 
 # sampling
-flags.DEFINE_integer('mcmc_num_steps', 30, 'number of mcmc sampling steps')
+flags.DEFINE_integer('mcmc_num_steps', 0, 'number of mcmc sampling steps')
 flags.DEFINE_float('mcmc_step_size_b_square', 2e-4, 'scaling parameter of step sizes')
 
 FLAGS = flags.FLAGS

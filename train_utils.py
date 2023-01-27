@@ -22,9 +22,9 @@ def cosine_decay(lr, step, total_steps):
   return mult * lr
 
 
-def get_warmed_up_lr(step, max_lr, n_warmup, total_steps):
+def get_warmed_up_lr(step, max_lr, n_warmup, total_steps, hps):
   step = tf.cast(step, tf.float32)
-  if FLAGS.cosine_decay:
+  if hps.cosine_decay:
     lr = cosine_decay(max_lr, tf.minimum(step - n_warmup, total_steps - n_warmup), total_steps - n_warmup)
   else:
     lr = max_lr
@@ -34,14 +34,15 @@ def get_warmed_up_lr(step, max_lr, n_warmup, total_steps):
 
 
 class LambdaLr(tf.optimizers.schedules.LearningRateSchedule):
-  def __init__(self, *, max_lr, warmup, total_steps):
+  def __init__(self, *, max_lr, warmup, total_steps, hps):
     super(LambdaLr, self).__init__()
     self.max_lr = max_lr
     self.warmup = warmup
     self.total_steps = total_steps
+    self.hps = hps
 
   def __call__(self, step):
-    return get_warmed_up_lr(step, self.max_lr, self.warmup, self.total_steps)
+    return get_warmed_up_lr(step, self.max_lr, self.warmup, self.total_steps, self.hps)
 
   def get_config(self):
     return {}
@@ -129,7 +130,7 @@ def plot_n_by_m_steps(x_true, x_pred, fp, n, m):
     Image.fromarray(img).save(f)
 
 
-def plot_stat(stat_keys, stats, stats_i, output_dir):
+def plot_stat(stat_keys, stats, stats_i, output_dir, hps):
   from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
   p_n = len(stats)
   fig = plt.figure(figsize=(20, p_n * 5))
@@ -141,7 +142,7 @@ def plot_stat(stat_keys, stats, stats_i, output_dir):
     plt.plot(stats_i, stats[k])
     if k == 'fid' or k == 'inception_score':
       for i, txt in enumerate(stats[k]):
-        if stats_i[i] % FLAGS.fid_n_iters == 0:
+        if stats_i[i] % hps.fid_n_iters == 0:
           plt.annotate(str(np.round(txt, decimals=2)), (stats_i[i], stats[k][i]))
     plt.ylabel(k)
     p_i += 1

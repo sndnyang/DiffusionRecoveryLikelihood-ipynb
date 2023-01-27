@@ -46,7 +46,7 @@ class RecoveryLikelihood(tf.keras.Model):
   def __init__(self, hps):
     super(RecoveryLikelihood, self).__init__()
     self.hps = hps
-    self.num_timesteps = FLAGS.num_diffusion_timesteps
+    self.num_timesteps = hps.num_diffusion_timesteps
 
     self.sigmas, self.a_s = get_sigma_schedule(beta_start=0.0001, beta_end=0.02, num_diffusion_timesteps=self.num_timesteps)
     self.a_s_cum = np.cumprod(self.a_s)
@@ -67,7 +67,7 @@ class RecoveryLikelihood(tf.keras.Model):
     else:
       raise NotImplementedError
 
-    self.net = net_res_temb2(name='net', ch=128, ch_mult=ch_mult, num_res_blocks=FLAGS.num_res_blocks, attn_resolutions=(16,))
+    self.net = net_res_temb2(name='net', ch=128, ch_mult=ch_mult, num_res_blocks=hps.num_res_blocks, attn_resolutions=(16,), hps=hps)
 
   def init(self, x_shape):
     """
@@ -179,7 +179,7 @@ class RecoveryLikelihood(tf.keras.Model):
 
     for _ in tf.range(tf.convert_to_tensor(self.hps.mcmc_num_steps)):
       noise = tf.random.normal(y.shape)
-      y_new = y + 0.5 * step_size_square * grad_y + tf.sqrt(step_size_square) * noise * FLAGS.noise_scale
+      y_new = y + 0.5 * step_size_square * grad_y + tf.sqrt(step_size_square) * noise * self.hps.noise_scale
 
       grad_y_new, log_p_y_new = self.grad_f(y_new, t, tilde_x, step_size_square, sigma, is_recovery, dropout=dropout)
       y, grad_y, log_p_y = y_new, grad_y_new, log_p_y_new

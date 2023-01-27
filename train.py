@@ -93,9 +93,9 @@ class Trainer:
     loss_ts = tf.zeros(shape=[self.hps.num_diffusion_timesteps], dtype=tf.float32)
     f_ts = tf.zeros(shape=[self.hps.num_diffusion_timesteps], dtype=tf.float32)
     stats = [0., 0., 0., disp, loss_ts, f_ts, 0.]
-    for tt in tf.range(tf.convert_to_tensor(FLAGS.n_batch_per_iter)):
+    for tt in tf.range(tf.convert_to_tensor(hps.n_batch_per_iter)):
       per_replica_stats = self.strategy.run(self.train_fn, args=(next(dist_iter),))
-      if tf.equal(tt, FLAGS.n_batch_per_iter - 1):
+      if tf.equal(tt, hps.n_batch_per_iter - 1):
         stats = [self.strategy.reduce(tf.distribute.ReduceOp.MEAN, stat, axis=None) for stat in per_replica_stats]
     return stats
 
@@ -121,11 +121,11 @@ class Trainer:
     self.diffusion = RecoveryLikelihood(self.hps)
     self.diffusion.init(x.shape)
 
-    lr_schedule = LambdaLr(warmup=self.hps.warmup, max_lr=self.hps.lr, total_steps=self.hps.n_iters)
+    lr_schedule = LambdaLr(warmup=self.hps.warmup, max_lr=self.hps.lr, total_steps=self.hps.n_iters, hps=self.hps)
 
-    if FLAGS.opt == 'adam':
+    if self.hps.opt == 'adam':
       self.opt = tf.keras.optimizers.Adam(learning_rate=lr_schedule, beta_1=self.hps.beta_1)
-    elif FLAGS.opt == 'adamax':
+    elif self.hps.opt == 'adamax':
       self.opt = tf.keras.optimizers.Adamax(learning_rate=lr_schedule, beta_1=self.hps.beta_1)
     else:
       raise NotImplementedError
@@ -154,7 +154,7 @@ class Trainer:
     ]
     stat = {k: [] for k in stat_keys}
 
-    if FLAGS.eval:
+    if self.hps.eval:
       self.logger.info('========== begin evaluation =========')
       noise = tf.random.normal(shape=[64, 32, 32, 3])
       x = data_preprocess(next(ds_iter)['image'])
@@ -197,7 +197,7 @@ class Trainer:
         )
         start_time = start_time_next
 
-      if i_iter % FLAGS.fid_n_iters == 0 and i_iter > 0:
+      if i_iter % self.hps.fid_n_iters == 0 and i_iter > 0:
         fid, inception_score = self.eval_fid_is()
 
       if i_iter % 5000 == 0 and i_iter > 0:
@@ -224,9 +224,9 @@ class Trainer:
         stat['fid'].append(fid)
         stat['inception_score'].append(inception_score)
         stat['time'].append(end_time - start_time)
-        plot_stat(stat_keys, stat, stat_i, output_dir_thread)
+        plot_stat(stat_keys, stat, stat_i, output_dir_thread, self.hps)
 
-      i_iter += FLAGS.n_batch_per_iter
+      i_iter += self.hps.n_batch_per_iter
 
       # set early exit
       if loss.numpy() < 0:
@@ -246,7 +246,7 @@ class Trainer:
 
   def eval_fid_is(self, full=False):
     self.logger.info('=================  computing fid  =================')
-    fid_n_samples = FLAGS.fid_n_samples if not full else self.n_train
+    fid_n_samples = self.hps.fid_n_samples if not full else self.n_train
     p_samples = []
     all_logits = []
     all_pools = []
@@ -326,4 +326,4 @@ class Trainer:
     self.logger.info('gpus={}'.format(self.hps.device))
     self.logger.info(self.hps)
 
-    self.n_per_replica = self.hps.n_batch_train // num_device()[0]
+    self.n_per_replica = self.hps.n_batch_train # // num_device()[0]

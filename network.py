@@ -8,10 +8,10 @@ import tensorflow_addons as tfa
 import nn
 
 
-def nonlinearity(x):
-  if FLAGS.act == 'lrelu':
+def nonlinearity(x, act):
+  if act == 'lrelu':
     return tf.nn.leaky_relu(x)
-  if FLAGS.act == 'swish':
+  if act == 'swish':
     return tf.nn.swish(x)
 
   raise NotImplementedError
@@ -19,30 +19,33 @@ def nonlinearity(x):
 
 class normalize(tf.keras.layers.Layer):
   def __init__(self, name, *args, **kwargs):
-    super(normalize, self).__init__(name=name, *args, **kwargs)
-    if FLAGS.normalize:
-      if FLAGS.normalize == 'group_norm':
+    super(normalize, self).__init__(name=name)
+    self.normalize = kwargs['normalize']
+    self.norm = None
+    if self.normalize:
+      if self.normalize == 'group_norm':
         self.norm = tfa.layers.GroupNormalization(groups=32, epsilon=1e-06)
-      elif FLAGS.normalize == 'batch_norm':
+      elif self.normalize == 'batch_norm':
         self.norm = tf.keras.layers.BatchNormalization()
-      elif FLAGS.normalize == 'instance_norm':
+      elif self.normalize == 'instance_norm':
         self.norm = tfa.layers.InstanceNormalization()
 
   def call(self, inputs, **kwargs):
-    if FLAGS.normalize:
+    if self.norm is not None:
       inputs = self.norm(inputs, training=True)
     return inputs
 
 
 class downsample(tf.keras.layers.Layer):
-  def __init__(self, name, with_conv, *args, **kwargs):
-    super(downsample, self).__init__(name=name, *args, **kwargs)
+  def __init__(self, name, hps, with_conv, *args, **kwargs):
+    super(downsample, self).__init__(name=name)
     self.with_conv = with_conv
+    self.hps = hps
 
   def build(self, input_shape):
     B, H, W, C = input_shape
     if self.with_conv:
-      self.conv2d = nn.conv2d(name='conv', num_units=C, filter_size=3, stride=2, spec_norm=FLAGS.spec_norm)
+      self.conv2d = nn.conv2d(name='conv', num_units=C, filter_size=3, stride=2, spec_norm=self.hps.spec_norm)
     # print('{}: x={}'.format(self.name, input_shape))
 
   def call(self, inputs, **kwargs):
@@ -58,19 +61,20 @@ class downsample(tf.keras.layers.Layer):
 
 
 class resnet_block(tf.keras.layers.Layer):
-  def __init__(self, *, name, out_ch=None):
+  def __init__(self, *, name, hps, out_ch=None):
     super(resnet_block, self).__init__(name=name)
     self.out_ch = out_ch
-    self.conv_shortcut = FLAGS.res_conv_shortcut
-    self.spec_norm = FLAGS.spec_norm
-    self.use_scale = FLAGS.res_use_scale
+    self.conv_shortcut = hps.res_conv_shortcut
+    self.spec_norm = hps.spec_norm
+    self.use_scale = hps.res_use_scale
+    self.hps = hps
 
   def build(self, input_shape):
     B, H, W, C = input_shape
     if self.out_ch is None:
       self.out_ch = C
-    self.normalize_1 = normalize('norm1')
-    self.normalize_2 = normalize('norm2')
+    self.normalize_1 = normalize('norm1', normalize=self.hps.normalize)
+    self.normalize_2 = normalize('norm2', normalize=self.hps.normalize)
 
     self.dense = nn.dense(name='temb_proj', num_units=self.out_ch, spec_norm=self.spec_norm)
     self.conv2d_1 = nn.conv2d(name='conv1', num_units=self.out_ch, spec_norm=self.spec_norm)
@@ -89,14 +93,14 @@ class resnet_block(tf.keras.layers.Layer):
     x = inputs
     h = inputs
 
-    h = nonlinearity(self.normalize_1(h))
+    h = nonlinearity(self.normalize_1(h), self.hps.act)
     h = self.conv2d_1(h)
 
     if temb is not None:
       # add in timestep embedding
-      h += self.dense(nonlinearity(temb))[:, None, None, :]
+      h += self.dense(nonlinearity(temb, self.hps.act))[:, None, None, :]
 
-    h = nonlinearity(self.normalize_2(h))
+    h = nonlinearity(self.normalize_2(h), self.hps.act)
     h = tf.nn.dropout(h, rate=dropout)
     h = self.conv2d_2(h)
 
@@ -116,7 +120,7 @@ class attn_block(tf.keras.layers.Layer):
 
   def build(self, input_shape):
     B, H, W, C = input_shape
-    self.normalize = normalize(name='norm')
+    self.normalize = normalize(name='norm', normalize=self.hps.normalize)
     self.nin_q = nn.nin(name='q', num_units=C)
     self.nin_k = nn.nin(name='k', num_units=C)
     self.nin_v = nn.nin(name='v', num_units=C)
@@ -148,15 +152,16 @@ class attn_block(tf.keras.layers.Layer):
 
 class net_res_temb2(tf.keras.layers.Layer):
   def __init__(self, *, name, ch, ch_mult=(1, 2, 4, 8), num_res_blocks,
-          attn_resolutions):
+          attn_resolutions, hps):
     super(net_res_temb2, self).__init__(name=name)
     self.ch, self.ch_mult = ch, ch_mult
     self.num_res_blocks = num_res_blocks
     self.attn_resolutions = attn_resolutions
     self.num_resolutions = len(self.ch_mult)
-    self.resamp_with_conv = FLAGS.resamp_with_conv
-    self.use_attention = FLAGS.use_attention
-    self.spec_norm = FLAGS.spec_norm
+    self.resamp_with_conv = hps.resamp_with_conv
+    self.use_attention = hps.use_attention
+    self.spec_norm = hps.spec_norm
+    self.hps = hps
 
   def build(self, input_shape):
     # timestep embedding
@@ -178,7 +183,7 @@ class net_res_temb2(tf.keras.layers.Layer):
       for i_block in range(self.num_res_blocks):
         res_s.append(
           resnet_block(
-            name='level_{}_block_{}'.format(i_level, i_block), out_ch=self.ch * self.ch_mult[i_level]
+            name='level_{}_block_{}'.format(i_level, i_block), hps=self.hps, out_ch=self.ch * self.ch_mult[i_level]
           )
         )
         if self.use_attention and S in self.attn_resolutions:
@@ -186,11 +191,11 @@ class net_res_temb2(tf.keras.layers.Layer):
       self.res_levels.append(res_s)
 
       if i_level != self.num_resolutions - 1:
-        self.downsample_s.append(downsample(name='downsample_{}'.format(i_level), with_conv=self.resamp_with_conv))
+        self.downsample_s.append(downsample(name='downsample_{}'.format(i_level), hps=self.hps, with_conv=self.resamp_with_conv))
         S = S // 2
 
     # end
-    self.normalize_out = normalize(name='norm_out')
+    self.normalize_out = normalize(name='norm_out', normalize=self.hps.normalize)
     self.fc_out = nn.dense(name='dense_out', num_units=1, spec_norm=False)
 
   def call(self, inputs, t, dropout):
@@ -203,7 +208,7 @@ class net_res_temb2(tf.keras.layers.Layer):
     # Timestep embedding
     temb = nn.get_timestep_embedding(t, self.ch)
     temb = self.temb_dense_0(temb)
-    temb = self.temb_dense_1(nonlinearity(temb))
+    temb = self.temb_dense_1(nonlinearity(temb, self.hps.act))
     assert temb.shape == [B, self.ch * 4]
 
     # downsample
@@ -220,16 +225,16 @@ class net_res_temb2(tf.keras.layers.Layer):
         h = self.downsample_s[i_level](h)
 
     # end
-    if FLAGS.final_act == 'relu':
+    if self.hps.final_act == 'relu':
       h = tf.nn.relu(h)
-    elif FLAGS.final_act == 'swish':
+    elif self.hps.final_act == 'swish':
       h = tf.nn.swish(h)
-    elif FLAGS.final_act == 'lrelu':
+    elif self.hps.final_act == 'lrelu':
       tf.nn.leaky_relu(x)
     else:
       raise NotImplementedError
     h = tf.reduce_sum(h, [1, 2])
-    temb_final = self.temb_dense_2(nonlinearity(temb))
+    temb_final = self.temb_dense_2(nonlinearity(temb, self.hps.act))
     h = tf.reduce_sum(h * temb_final, axis=1)
 
     return h
